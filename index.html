@@ -8,15 +8,17 @@
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
         .rpc-url { background: #e0e0e0; padding: 10px; border-radius: 5px; word-break: break-all; }
         button { background: #3b99fc; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
         #status, #result { margin-top: 20px; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
         #status { background: #fff3cd; display: none; }
         #result { background: #d4edda; }
+        .error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
     <h1>🚀 Connect to My Custom RPC</h1>
     <p>Your RPC endpoint:</p>
-    <!-- REPLACE THIS URL WITH YOUR ACTUAL CLOUDFLARED TUNNEL URL -->
+    <!-- IMPORTANT: Replace this URL with your actual cloudflared tunnel URL -->
     <div class="rpc-url" id="rpcUrl">https://vegetation-workplace-experienced-illustrations.trycloudflare.com</div>
 
     <button id="connectBtn">Connect Wallet</button>
@@ -27,41 +29,54 @@
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.11.0/dist/index.umd.js"></script>
     <script>
-        const rpcUrl = document.getElementById('rpcUrl').innerText;
-        const projectId = "cd1a5ec0393767579e1f364ffc41597d";
-
-        document.getElementById('connectBtn').addEventListener('click', async () => {
+        (function() {
+            const rpcUrl = document.getElementById('rpcUrl').innerText;
+            const projectId = "cd1a5ec0393767579e1f364ffc41597d";
+            const connectBtn = document.getElementById('connectBtn');
             const statusDiv = document.getElementById('status');
             const resultDiv = document.getElementById('result');
-            statusDiv.style.display = 'block';
-            statusDiv.innerText = 'Connecting...';
 
-            try {
-                // 1. Create WalletConnect provider
-                const provider = await EthereumProvider.init({
-                    projectId,
-                    chains: [1],                // Chain ID 1 (Ethereum mainnet)
-                    showQrModal: true,           // Automatically shows the QR modal
-                    rpcMap: {
-                        1: rpcUrl                // Map chain 1 to your custom RPC
-                    },
-                    methods: ['eth_sendTransaction', 'eth_sign'], // Optional: add methods you need
-                    optionalMethods: ['eth_accounts'],
+            // Check if EthereumProvider loaded
+            if (typeof window.EthereumProvider === 'undefined') {
+                statusDiv.style.display = 'block';
+                statusDiv.innerHTML = '❌ WalletConnect library failed to load. Please check your internet connection or try again later.';
+                statusDiv.classList.add('error');
+                connectBtn.disabled = true;
+            } else {
+                connectBtn.addEventListener('click', async () => {
+                    statusDiv.style.display = 'block';
+                    statusDiv.innerText = 'Connecting...';
+                    statusDiv.classList.remove('error');
+                    resultDiv.innerText = '';
+
+                    try {
+                        // Initialize WalletConnect provider
+                        const provider = await window.EthereumProvider.init({
+                            projectId,
+                            chains: [1],
+                            showQrModal: true,
+                            rpcMap: {
+                                1: rpcUrl
+                            },
+                            methods: ['eth_sendTransaction', 'eth_sign'],
+                            optionalMethods: ['eth_accounts']
+                        });
+
+                        // Wrap with ethers
+                        const ethersProvider = new ethers.providers.Web3Provider(provider);
+                        const signer = ethersProvider.getSigner();
+                        const address = await signer.getAddress();
+                        const balance = await ethersProvider.getBalance(address);
+
+                        statusDiv.style.display = 'none';
+                        resultDiv.innerText = `✅ Connected: ${address}\n💰 ETH Balance: ${ethers.utils.formatEther(balance)} ETH`;
+                    } catch (err) {
+                        statusDiv.innerText = `❌ Error: ${err.message}`;
+                        console.error(err);
+                    }
                 });
-
-                // 2. Wrap with ethers
-                const ethersProvider = new ethers.providers.Web3Provider(provider);
-                const signer = ethersProvider.getSigner();
-                const address = await signer.getAddress();
-                const balance = await ethersProvider.getBalance(address);
-
-                statusDiv.style.display = 'none';
-                resultDiv.innerText = `✅ Connected: ${address}\n💰 ETH Balance: ${ethers.utils.formatEther(balance)} ETH`;
-            } catch (err) {
-                statusDiv.innerText = `❌ Error: ${err.message}`;
-                console.error(err);
             }
-        });
+        })();
     </script>
 </body>
 </html>
