@@ -3,27 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connect to My RPC</title>
+    <title>Connect to My Custom RPC</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
         .rpc-url { background: #e0e0e0; padding: 10px; border-radius: 5px; word-break: break-all; }
-        button { background: #3b99fc; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; }
-        #status { margin-top: 20px; padding: 10px; background: #fff3cd; border-radius: 5px; display: none; }
+        button { background: #3b99fc; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; }
+        #status, #result { margin-top: 20px; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
+        #status { background: #fff3cd; display: none; }
+        #result { background: #d4edda; }
     </style>
 </head>
 <body>
-    <h1>🚀 Connect to My Local RPC</h1>
+    <h1>🚀 Connect to My Custom RPC</h1>
     <p>Your RPC endpoint:</p>
+    <!-- IMPORTANT: Replace this URL with your actual cloudflared tunnel URL -->
     <div class="rpc-url" id="rpcUrl">https://vegetation-workplace-experienced-illustrations.trycloudflare.com</div>
 
-    <button id="connectBtn">Connect Wallet via WalletConnect</button>
+    <button id="connectBtn">Connect Wallet</button>
     <div id="status"></div>
     <div id="result"></div>
 
+    <!-- Ethers and WalletConnect v2 libraries -->
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+    <script src="https://unpkg.com/@walletconnect/web3wallet@1.9.0/dist/web3wallet.umd.min.js"></script>
+    <script src="https://unpkg.com/@walletconnect/modal@2.6.2/dist/modal.umd.min.js"></script>
     <script>
         const rpcUrl = document.getElementById('rpcUrl').innerText;
+        // YOUR WalletConnect Project ID
+        const projectId = "cd1a5ec0393767579e1f364ffc41597d";
 
         document.getElementById('connectBtn').addEventListener('click', async () => {
             const statusDiv = document.getElementById('status');
@@ -32,21 +39,57 @@
             statusDiv.innerText = 'Connecting...';
 
             try {
-                const walletConnectProvider = new WalletConnectProvider.default({
-                    rpc: { 1: rpcUrl },
-                    chainId: 1
+                // Create WalletConnect modal
+                const modal = new WalletConnectModal.default({
+                    projectId,
+                    modalOptions: { themeMode: 'light' }
                 });
 
-                await walletConnectProvider.enable();
-                const provider = new ethers.providers.Web3Provider(walletConnectProvider);
+                // Initialize Web3Wallet
+                const web3wallet = await Web3Wallet.default.init({
+                    projectId,
+                    metadata: {
+                        name: 'My RPC App',
+                        description: 'Connect to my custom RPC',
+                        url: window.location.href,
+                        icons: []
+                    }
+                });
+
+                // Create pairing
+                const { uri, approval } = await web3wallet.core.pairing.pair({
+                    topic: ''
+                });
+
+                // Show QR code modal
+                modal.openModal({ uri });
+
+                // Wait for user approval in wallet
+                const session = await approval();
+                modal.closeModal();
+
+                // Create a Web3Provider that uses the WalletConnect session
+                const provider = new ethers.providers.Web3Provider({
+                    send: async (method, params) => {
+                        const result = await web3wallet.request({
+                            chainId: 'eip155:1',
+                            topic: session.topic,
+                            request: { method, params }
+                        });
+                        return result;
+                    }
+                });
+
+                // Get account info
                 const signer = provider.getSigner();
                 const address = await signer.getAddress();
                 const balance = await provider.getBalance(address);
 
                 statusDiv.style.display = 'none';
-                resultDiv.innerText = `✅ Connected: ${address}\n💰 ETH: ${ethers.utils.formatEther(balance)} ETH`;
+                resultDiv.innerText = `✅ Connected: ${address}\n💰 ETH Balance: ${ethers.utils.formatEther(balance)} ETH`;
             } catch (err) {
                 statusDiv.innerText = `❌ Error: ${err.message}`;
+                console.error(err);
             }
         });
     </script>
