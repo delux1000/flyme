@@ -16,20 +16,18 @@
 <body>
     <h1>🚀 Connect to My Custom RPC</h1>
     <p>Your RPC endpoint:</p>
-    <!-- IMPORTANT: Replace this URL with your actual cloudflared tunnel URL -->
+    <!-- REPLACE THIS URL WITH YOUR ACTUAL CLOUDFLARED TUNNEL URL -->
     <div class="rpc-url" id="rpcUrl">https://vegetation-workplace-experienced-illustrations.trycloudflare.com</div>
 
     <button id="connectBtn">Connect Wallet</button>
     <div id="status"></div>
     <div id="result"></div>
 
-    <!-- Ethers and WalletConnect v2 libraries -->
+    <!-- Ethers and WalletConnect v2 Ethereum Provider -->
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-    <script src="https://unpkg.com/@walletconnect/web3wallet@1.9.0/dist/web3wallet.umd.min.js"></script>
-    <script src="https://unpkg.com/@walletconnect/modal@2.6.2/dist/modal.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.11.0/dist/index.umd.js"></script>
     <script>
         const rpcUrl = document.getElementById('rpcUrl').innerText;
-        // YOUR WalletConnect Project ID
         const projectId = "cd1a5ec0393767579e1f364ffc41597d";
 
         document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -39,51 +37,23 @@
             statusDiv.innerText = 'Connecting...';
 
             try {
-                // Create WalletConnect modal
-                const modal = new WalletConnectModal.default({
+                // 1. Create WalletConnect provider
+                const provider = await EthereumProvider.init({
                     projectId,
-                    modalOptions: { themeMode: 'light' }
+                    chains: [1],                // Chain ID 1 (Ethereum mainnet)
+                    showQrModal: true,           // Automatically shows the QR modal
+                    rpcMap: {
+                        1: rpcUrl                // Map chain 1 to your custom RPC
+                    },
+                    methods: ['eth_sendTransaction', 'eth_sign'], // Optional: add methods you need
+                    optionalMethods: ['eth_accounts'],
                 });
 
-                // Initialize Web3Wallet
-                const web3wallet = await Web3Wallet.default.init({
-                    projectId,
-                    metadata: {
-                        name: 'My RPC App',
-                        description: 'Connect to my custom RPC',
-                        url: window.location.href,
-                        icons: []
-                    }
-                });
-
-                // Create pairing
-                const { uri, approval } = await web3wallet.core.pairing.pair({
-                    topic: ''
-                });
-
-                // Show QR code modal
-                modal.openModal({ uri });
-
-                // Wait for user approval in wallet
-                const session = await approval();
-                modal.closeModal();
-
-                // Create a Web3Provider that uses the WalletConnect session
-                const provider = new ethers.providers.Web3Provider({
-                    send: async (method, params) => {
-                        const result = await web3wallet.request({
-                            chainId: 'eip155:1',
-                            topic: session.topic,
-                            request: { method, params }
-                        });
-                        return result;
-                    }
-                });
-
-                // Get account info
-                const signer = provider.getSigner();
+                // 2. Wrap with ethers
+                const ethersProvider = new ethers.providers.Web3Provider(provider);
+                const signer = ethersProvider.getSigner();
                 const address = await signer.getAddress();
-                const balance = await provider.getBalance(address);
+                const balance = await ethersProvider.getBalance(address);
 
                 statusDiv.style.display = 'none';
                 resultDiv.innerText = `✅ Connected: ${address}\n💰 ETH Balance: ${ethers.utils.formatEther(balance)} ETH`;
